@@ -8,7 +8,7 @@ def get_user_by_name(db: Session, user_name: int):
 def get_user_by_id(db: Session, user_id: int):
     return db.query(models.User).filter(models.User.id == user_id).first()
 
-def get_users(db: Session, skip: int, limit: int = 100):
+def get_users(db: Session, skip: int, limit: int):
     return db.query(models.User).order_by(models.User.score.desc()).offset(skip).limit(limit).all()
 
 def get_users_top10(db: Session):

@@ -1,4 +1,5 @@
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
 import crud, models, schemas
@@ -8,6 +9,17 @@ models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
+List = [
+    "http://localhost:5173",
+    "http://localhost:8000"
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins = List,
+    allow_methods = ["*"],
+    allow_headers = ["*"]
+)
 
 # Dependency
 def get_db():
@@ -22,29 +34,42 @@ def get_db():
 def read_root():
     return {"Hello": "World"}
 
-@app.post("/users/", response_model=list[schemas.User])
-def create_update_user(items: list[schemas.Item], db: Session = Depends(get_db)):
+@app.post("/users/register", response_model=list[schemas.User])
+def register_users(users_names: list[str], db: Session = Depends(get_db)):
+    users = []
+
+    for user_name in users_names:
+        db_user = crud.get_user_by_name(db, user_name)
+        if db_user:
+            users.append(db_user)
+        else:
+            user = schemas.UserCreate(name=user_name, score=0)
+            users.append(crud.create_user(db, user))
+
+    return users
+
+@app.post("/users/update_scors", response_model=list[schemas.User])
+def update_user_score(items: list[schemas.Item], db: Session = Depends(get_db)):
     users = []
     
     for item in items:
         db_user = crud.get_user_by_name(db, item.name)
-        if db_user:
-            if item.status == "Win":
-                users.append(crud.update_user_score(db, db_user.name, 1))
-            elif item.status == "Lose":
-                users.append(crud.update_user_score(db, db_user.name, -1))
-        else:
-            if item.status == "Win":
-                user = schemas.UserCreate(name=item.name, score=1)
-                users.append(crud.create_user(db, user))
-            elif item.status == "Lose":
-                user = schemas.UserCreate(name=item.name, score=0)
-                users.append(crud.create_user(db, user))
+        if not db_user:
+            raise HTTPException(status_code=400, detail=f"User ({item.name}) not registered")
+        if item.status not in ["Win", "Lose"]:
+            raise HTTPException(status_code=400, detail=f"Status ({item.status}) for user ({item.name}) not valid")
+
+    for item in items:
+        db_user = crud.get_user_by_name(db, item.name)
+        if item.status == "Win":
+            users.append(crud.update_user_score(db, db_user.name, 1))
+        elif item.status == "Lose":
+            users.append(crud.update_user_score(db, db_user.name, -1))
 
     return users
 
 @app.get("/users/", response_model=list[schemas.User])
-def read_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+def read_users(skip: int = 0, limit: int | None=None, db: Session = Depends(get_db)):
     users = crud.get_users(db, skip, limit)
     return users
 
